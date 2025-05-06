@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -35,7 +35,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define on 1
+#define off 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,7 +47,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+bool tx_busy = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -95,23 +96,50 @@ int main(void)
   MX_USART3_UART_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
+  MX_UART4_Init();
+  MX_UART5_Init();
+  MX_USART6_UART_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
-  uint8_t test_packet[16] = {0xFF,0xFF,0xFD,0x00,0xFE,0x0B,0x00,0x83,65,0x00,0x01,0x00,1,0x01,11,0x01};
-  unsigned short a = sizeof(test_packet)/sizeof(test_packet[0]); // 배열 크기 계산 수정
-  unsigned short crc_value = update_crc(0, test_packet, a); // 전체 배열 전달
-  uint8_t crc_L = (crc_value & 0x00FF);
-  uint8_t crc_H = ((crc_value >> 8) & 0x00FF);
-
+	uint32_t hip_data[4] = {1};
+	uint32_t knee_data[4] = {1};
+	uint32_t ankle_data[4] = {1};
+	uint32_t wheel_data[4] = {1};
+	dxl_tourqe_set(ALL_LEG, on, on);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+	while (1)
+	{
+		hip_data[0] = 0;
+		knee_data[0] = 0;
+		ankle_data[0] = 0;
+		wheel_data[0] = 0;
+		send_sync_write_1(FR_LEG, DXL_1_LED, 1, ankle_data, wheel_data);
+
+		HAL_Delay(500);
+
+		hip_data[0] = 1;
+		knee_data[0] = 1;
+		ankle_data[0] = 1;
+		wheel_data[0] = 1;
+		send_sync_write_1(FR_LEG, DXL_1_LED, 1, ankle_data, wheel_data);
+
+		HAL_Delay(500);
+//		hip_data[0] = -1024;
+//		knee_data[0] = 1024;
+//		send_sync_write_2(FR_LEG, DXL_2_Goal_Position, 4, hip_data, knee_data);
+//		HAL_Delay(1000);
+//
+//		hip_data[0] = 0;
+//		knee_data[0] = 0;
+//		send_sync_write_2(FR_LEG, DXL_2_Goal_Position, 4, hip_data, knee_data);
+//		HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+	}
   /* USER CODE END 3 */
 }
 
@@ -161,7 +189,34 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if(huart->Instance == USART1)
+	{
+		tx_busy = false;
+		// USART1 처리
+	}
+	else if(huart->Instance == USART2)
+	{
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);
+		tx_busy = false;
+	}
+	else if(huart->Instance == USART3)
+	{
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+		tx_busy = false;
+	}
+	else if(huart->Instance == UART4) // USART4를 UART4로 수정
+	{
+		tx_busy = false;
+		// UART4 처리
+	}
+	else if(huart->Instance == UART5) // USART5를 UART5로 수정
+	{
+		tx_busy = false;
+		// UART5 처리
+	}
+}
 /* USER CODE END 4 */
 
 /**
@@ -171,11 +226,11 @@ void SystemClock_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
+	/* User can add his own implementation to report the HAL error return state */
+	__disable_irq();
+	while (1)
+	{
+	}
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -190,7 +245,7 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
+	/* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
