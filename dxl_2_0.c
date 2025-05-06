@@ -7,6 +7,8 @@
 #include "main.h"
 #include "dxl_2_0.h"
 #include "stdint.h"
+#include "usart.h"
+#include <stdbool.h>
 #define DXL_PACKET_LEN   512
 
 /*
@@ -40,7 +42,7 @@ LegMotors legs[5] = {
 };
 
 
-
+//-------------------CRC & CheckSum-----------------------
 unsigned short update_crc(unsigned short crc_accum, unsigned char *data_blk_ptr, unsigned short data_blk_size)
 {
     unsigned short i, j;
@@ -89,49 +91,341 @@ unsigned short update_crc(unsigned short crc_accum, unsigned char *data_blk_ptr,
 }
 
 
+uint8_t calculate_checksum_1_0(uint8_t *data, uint16_t length) {
+    uint8_t checksum = 0;
 
+    // ID부터 파라미터 끝까지 모든 바이트의 합
+    for (uint16_t i = 2; i < length + 3; i++) {  // 2는 헤더 이후부터 시작
+        checksum += data[i];
+    }
 
-void creat_packet(uint8_t send_type)
+    // 체크섬은 계산된 합의 하위 바이트의 비트를 뒤집은 값
+    return ~checksum;
+}
+//-------------------CRC & CheckSum-----------------------
+
+dxl_sync_write_1_0 creat_sync_packet_1_0(void)
 {
-	if(send_type == 1)
-	{
-
-	}
-	else if(send_type == 2)
-	{
 		dxl_sync_write_1_0 sw1;
-		dxl_sync_write_2_0 sw2;
 
 		sw1.header[0] = 0xFF;
 		sw1.header[1] = 0XFF;
 		sw1.id = 0xFE;
 		sw1.inst = 0x83;
 
+		return sw1;
+}
+
+
+dxl_sync_write_2_0 creat_sync_packet_2_0(void)
+{
+		dxl_sync_write_2_0 sw2;
+
 		sw2.header[0] = 0xFF;
 		sw2.header[1] = 0xFF;
-		sw2.header[2] = 0xFE;
+		sw2.header[2] = 0xFD;
+		sw2.reserved = 0;
 		sw2.id = 0xFE;
 		sw2.inst = 0x83;
-	}
-	else if(send_type == 3)
-	{
-		dxl_bulk_write_2_0 bw2;
-	}
-	else if(send_type == 4)
-	{
+
+		return sw2;
+}
+
+
+dxl_bulk_read_1_0 creat_bulk_packet_1_0(void)
+{
 		dxl_bulk_read_1_0 br1;
+
+		br1.header[0] = 0xFF;
+		br1.header[1] = 0XFF;
+		br1.id = 0xFE;
+		br1.inst = 0x92;
+
+		return br1;
+}
+
+
+dxl_bulk_read_2_0 creat_bulk_packet_2_0(void)
+{
 		dxl_bulk_read_2_0 br2;
+
+		br2.header[0] = 0xFF;
+		br2.header[1] = 0xFF;
+		br2.header[2] = 0xFD;
+		br2.reserved = 0;
+		br2.id = 0xFE;
+		br2.inst = 0x92;
+
+		return br2;
+}
+
+
+
+void uart_transmit_packet(UART_HandleTypeDef *huart, uint8_t *data, uint16_t size)
+{
+    if(tx_busy == 0)
+    {
+    	if(huart->Instance == USART1)
+    	    {
+    	        HAL_UART_Transmit_DMA(huart, data, size);
+    	        tx_busy = true;
+    	    }
+    	    else if(huart->Instance == USART2)
+    	    {
+    	        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET); // UART2 전송 시작 표시
+    	        HAL_UART_Transmit_DMA(huart, data, size);
+    	        tx_busy = true;
+    	    }
+    	    else if(huart->Instance == USART3)
+    	    {
+    	        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET); // UART3 전송 시작 표시
+    	        HAL_UART_Transmit_DMA(huart, data, size);
+    	        tx_busy = true;
+    	    }
+    	    else if(huart->Instance == UART4)
+    	    {
+    	        // UART4 처리 (GPIO 핀 필요한 경우 추가)
+    	        HAL_UART_Transmit_DMA(huart, data, size);
+    	        tx_busy = true;
+    	    }
+    	    else if(huart->Instance == UART5)
+    	    {
+    	        // UART5 처리 (GPIO 핀 필요한 경우 추가)
+    	        HAL_UART_Transmit_DMA(huart, data, size);
+    	        tx_busy = true;
+    	    }
+    }
+}
+
+
+void dxl_tourqe_set(uint8_t send_leg_type, uint8_t on1, uint8_t on2)
+{
+	uint32_t on_1[1];
+	uint32_t on_2[1];
+	on_1[0] = on1;
+	on_2[0] = on2;
+
+    if(send_leg_type == 0)
+    {
+    	send_sync_write_2(ALL_LEG, DXL_2_Torque_Enable, 1, on_1, on_2);
+    	send_sync_write_1(ALL_LEG, DXL_1_Torque_Enable, 1, on_1, on_2);
+    }
+    else if(send_leg_type >= 1 && send_leg_type <= 4)
+    {
+    	send_sync_write_2(send_leg_type, DXL_2_Torque_Enable, 1, on_1, on_2);
+    	send_sync_write_1(send_leg_type, DXL_1_Torque_Enable, 1, on_1, on_2);
+    }
+}
+
+uint16_t serialize_sync_write_1_0(dxl_sync_write_1_0 *packet, uint8_t *id_array, uint8_t id_count,
+                              uint32_t *data_array, uint8_t *buffer, uint16_t buffer_size)
+{
+    uint16_t index = 0;
+
+    // 버퍼 크기 체크
+    uint16_t required_size = 8 + id_count * (packet->data_len + 1);
+    if (buffer_size < required_size) {
+        return 0; // 버퍼 크기 부족
+    }
+
+    buffer[index++] = packet->header[0];
+    buffer[index++] = packet->header[1];
+    buffer[index++] = packet->id;
+    buffer[index++] = packet->length;
+    buffer[index++] = packet->inst;
+    buffer[index++] = packet->start_addr;
+    buffer[index++] = packet->data_len;
+
+    for (int i = 0; i < id_count; i++) {
+        buffer[index++] = id_array[i]; // ID
+
+        // 데이터 추가 (리틀 엔디안)
+        for (int j = 0; j < packet->data_len; j++) {
+            buffer[index++] = (data_array[i] >> (8 * j)) & 0xFF;
+        }
+    }
+    packet->checksum = calculate_checksum_1_0(buffer, index);
+    buffer[index++] = packet->checksum;
+
+    return index;
+
+}
+
+uint16_t serialize_sync_write_2_0(dxl_sync_write_2_0 *packet, uint8_t *id_array, uint8_t id_count,
+                              uint32_t *data_array, uint8_t *buffer, uint16_t buffer_size)
+{
+    uint16_t index = 0;
+
+    // 버퍼 크기 체크
+    uint16_t required_size = 12 + id_count * (packet->data_len + 1) + 2; // 헤더+ID+파라미터+CRC
+    if (buffer_size < required_size) {
+        return 0; // 버퍼 크기 부족
+    }
+
+    buffer[index++] = packet->header[0];
+    buffer[index++] = packet->header[1];
+    buffer[index++] = packet->header[2];
+    buffer[index++] = packet->reserved;
+    buffer[index++] = packet->id;
+    buffer[index++] = packet->length & 0xFF;
+    buffer[index++] = (packet->length >> 8) & 0xFF;
+    buffer[index++] = packet->inst;
+    buffer[index++] = packet->start_addr & 0xFF;
+    buffer[index++] = (packet->start_addr >> 8) & 0xFF;
+    buffer[index++] = packet->data_len & 0xFF;
+    buffer[index++] = (packet->data_len >> 8) & 0xFF;
+
+    for (int i = 0; i < id_count; i++) {
+        buffer[index++] = id_array[i]; // ID
+
+        // 데이터 추가 (리틀 엔디안)
+        for (int j = 0; j < packet->data_len; j++) {
+            buffer[index++] = (data_array[i] >> (8 * j)) & 0xFF;
+        }
+    }
+
+    unsigned short crc = update_crc(0, buffer, index);
+    buffer[index++] = crc & 0x00FF;
+    buffer[index++] = (crc >> 8) & 0x00FF;
+
+    return index; // 실제 사용된 버퍼 크기 반환
+
+}
+
+void send_sync_write_1(uint8_t send_leg_type, uint16_t addr, uint16_t data_len, uint32_t *ankle_data, uint32_t *wheel_data)
+{
+	uint8_t id_count = 0;
+
+    if(send_leg_type == 0)
+    {id_count = all_ankle_wheel_motor;} // 8
+    else if(send_leg_type >= 1 && send_leg_type <= 4)
+    {id_count = one_leg_ankle_wheel_motor;} // 2
+    else if(send_leg_type == 40)
+    {id_count = all_ankle_motor;} // 4
+    else if(send_leg_type >= 41 && send_leg_type <= 44)
+    {id_count = one_leg_ankle_motor;} // 1
+    else if(send_leg_type == 50)
+    {id_count = all_wheel_motor;} // 4
+    else if(send_leg_type >= 51 && send_leg_type <= 54)
+    {id_count = one_leg_wheel_motor;} // 1
+
+	uint8_t id[id_count];
+	uint32_t data_array[id_count];
+	dxl_sync_write_1_0 sw1 = creat_sync_packet_1_0();
+
+	if(send_leg_type == 0)	{
+        for(int i = 1; i <= leg_count; i++) {
+            id[2*(i-1)] = legs[i].ankle;     // ankle 모터 (0번째 요소)
+            id[2*(i-1)+1] = legs[i].wheel;  // wheel 모터 (1번째 요소)
+            data_array[2*(i-1)] = ankle_data[i-1];  // hip 모터 설정 골위치 또는 토크 또는 LED (0번째 요소)
+            data_array[2*(i-1)+1] = wheel_data[i-1]; // knee 모터 골위치 또는 토크 또는 LED (1번째 요소)
+        }
 	}
+    else if(send_leg_type == 40)	{
+        for(int i = 1; i <= leg_count; i++) {
+            id[i-1] = legs[i].ankle;     // ankle 모터 (0번째 요소)
+            data_array[i-1] = ankle_data[i-1];  // hip 모터 설정 골위치 또는 토크 또는 LED (0번째 요소)
+        }
+	}
+    else if(send_leg_type == 50)	{
+        for(int i = 1; i <= leg_count; i++) {
+            id[i-1] = legs[i].wheel;  // wheel 모터 (1번째 요소)
+            data_array[i-1] = wheel_data[i-1]; // knee 모터 골위치 또는 토크 또는 LED (1번째 요소)
+        }
+	}
+    else if(send_leg_type >= 1 && send_leg_type <= 4) // 특정 다리
+    {
+    	id[0] = legs[send_leg_type].ankle;  // ankle 모터 (0번째 요소)
+        id[1] = legs[send_leg_type].wheel; // wheel 모터 (1번째 요소)
+        data_array[0] = ankle_data[0];  // ankle 모터 설정 골위치 또는 토크 또는 LED (0번째 요소)
+        data_array[1] = wheel_data[0]; // wheel 모터 골위치 또는 토크 또는 LED (1번째 요소)
+    }
+    else if(send_leg_type >= 41 && send_leg_type <= 44) // 특정 다리
+    {
+    	id[0] = legs[(send_leg_type - 40)].ankle;  // ankle 모터 (0번째 요소)
+        data_array[0] = ankle_data[0];  // ankle 모터 설정 골위치 또는 토크 또는 LED (0번째 요소)
+    }
+    else if(send_leg_type >= 51 && send_leg_type <= 54) // 특정 다리
+    {
+        id[0] = legs[(send_leg_type - 50)].wheel; // wheel 모터 (1번째 요소)
+        data_array[0] = wheel_data[0];  // wheel 모터 설정 골위치 또는 토크 또는 LED (0번째 요소)
+    }
 
+
+	sw1.start_addr = addr;
+	sw1.data_len = data_len;
+	sw1.length = 4 + (id_count*(sw1.data_len + 1));
+
+	uint16_t required_size =  8 + id_count * (sw1.data_len + 1); // 헤더2+ID1+len1++inst1+addr1+data_len1+파라미터+CKS1
+    uint8_t packet_buffer[256] = {0,};
+    if(required_size <= sizeof(packet_buffer))
+    {
+        uint16_t packet_size = serialize_sync_write_1_0(&sw1, id, id_count, data_array, packet_buffer, sizeof(packet_buffer));
+
+        if(packet_size > 0)
+        {
+            uart_transmit_packet(&huart3, packet_buffer, packet_size);
+        }
+    }
 }
 
-void sync_write_1(uint8_t *leg_num, uint16_t addr, uint16_t ankle_data, uint16_t wheel_data)
-{
-	
-}
 
-void sync_write_2()
+void send_sync_write_2(uint8_t send_leg_type, uint16_t addr, uint16_t data_len, uint32_t *hip_data, uint32_t *knee_data)
 {
+	uint8_t id_count = 0;
+
+    if(send_leg_type == 0)
+    {
+        id_count = all_hip_knee_motor; // 8
+    }
+    else if(send_leg_type >= 1 && send_leg_type <= 4)
+    {
+        id_count = one_leg_hip_knee_motor; // 2
+    }
+
+	uint8_t id[id_count];
+    uint32_t data_array[id_count];
+	dxl_sync_write_2_0 sw2 = creat_sync_packet_2_0();
+
+	if(send_leg_type == 0)
+	{
+        for(int i = 1; i <= leg_count; i++) {
+            id[2*(i-1)] = legs[i].hip;     // hip 모터 (0번째 요소)
+            id[2*(i-1)+1] = legs[i].knee;  // knee 모터 (1번째 요소)
+            data_array[2*(i-1)] = hip_data[i-1];  // hip 모터 설정 골위치 또는 토크 또는 LED (0번째 요소)
+            data_array[2*(i-1)+1] = knee_data[i-1]; // knee 모터 골위치 또는 토크 또는 LED (1번째 요소)
+        }
+	}
+    else if(send_leg_type >= 1 && send_leg_type <= 4) // 특정 다리
+    {
+    	id[0] = legs[send_leg_type].hip;  // hip 모터 (0번째 요소)
+        id[1] = legs[send_leg_type].knee; // knee 모터 (1번째 요소)
+        data_array[0] = hip_data[0];  // hip 모터 설정 골위치 또는 토크 또는 LED (0번째 요소)
+        data_array[1] = knee_data[0]; // knee 모터 골위치 또는 토크 또는 LED (1번째 요소)
+    }
+
+	sw2.start_addr = addr;
+	sw2.data_len = data_len;
+	sw2.length = 7 + (id_count*(sw2.data_len + 1));
+
+	uint16_t required_size = 12 + id_count * (sw2.data_len + 1) + 2; // 헤더4+ID1+파라미터+CRC2
+
+    uint8_t packet_buffer[256] = {0,};
+    if(required_size <= sizeof(packet_buffer))
+    {
+        uint16_t packet_size = serialize_sync_write_2_0(&sw2, id, id_count, data_array, packet_buffer, sizeof(packet_buffer));
+
+        if(packet_size > 0)
+        {
+            uart_transmit_packet(&huart2, packet_buffer, packet_size);
+        }
+    }
+
+
+
+	//uint8_t test_packet[16] = {0xFF,0xFF,0xFD,0x00,0xFE,0x0B,0x00,0x83,65,0x00,0x01,0x00,1,0x01,11,0x01};
+
+
 
 }
 
