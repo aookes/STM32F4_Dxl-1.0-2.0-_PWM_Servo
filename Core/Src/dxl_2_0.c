@@ -208,10 +208,12 @@ void dxl_tourqe_set(uint8_t send_leg_type, uint8_t on1, uint8_t on2)
     if(send_leg_type == 0)
     {
     	send_sync_write_2(ALL_LEG, DXL_2_Torque_Enable, 1, on_1, on_2);
+    	send_sync_write_1(ALL_LEG, DXL_1_Torque_Enable, 1, on_1, on_2);
     }
     else if(send_leg_type >= 1 && send_leg_type <= 4)
     {
     	send_sync_write_2(send_leg_type, DXL_2_Torque_Enable, 1, on_1, on_2);
+    	send_sync_write_1(send_leg_type, DXL_1_Torque_Enable, 1, on_1, on_2);
     }
 }
 
