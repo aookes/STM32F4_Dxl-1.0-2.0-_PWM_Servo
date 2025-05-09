@@ -50,6 +50,7 @@ enum Dxl_2_0_Addr{
 	DXL_2_Torque_Enable = 64, //1
 	DXL_2_LED = 65,//1
 	DXL_2_Goal_PWM = 100,//2
+	DXL_2_Goal_Velocity = 112,//4
 	DXL_2_Goal_Position = 116,//4
 	DXL_2_Present_Current = 126,//2
 	DXL_2_Present_Position = 132,//4
@@ -59,6 +60,7 @@ enum Dxl_2_0_Addr{
 enum Dxl_1_0_Addr{
 	DXL_1_Torque_Enable = 24,//1
 	DXL_1_LED = 25,//1
+	DXL_1_MOVING_SPEED = 32,
 	DXL_1_Goal_Torque_Limit = 34,//1
 	DXL_1_Goal_Position = 30,//2
 	DXL_1_Present_Load = 40,//2
@@ -76,7 +78,7 @@ enum PacketType {
 };
 
 enum SendLegType {
-	ALL_LEG = 0,
+	ALL = 0,
 	FR_LEG = 1,
 	FL_LEG = 2,
 	RR_LEG = 3,
@@ -93,6 +95,14 @@ enum SendLegType {
 	RL_WHEEL = 54,
 };
 
+typedef struct {
+	uint32_t hip_data[4];
+	uint8_t hip_Hori_data[4];
+	uint32_t knee_data[4];
+	uint16_t ankle_data[4];
+	uint8_t ankle_Hori_data[4];
+	uint16_t wheel_data[4];
+} data_set_all;
 
 //-------------------single------------------------//
 typedef struct {
@@ -230,6 +240,8 @@ typedef struct {
 
 
 void send_hello(void);
+void dxl_torque_set(uint8_t send_leg_type, uint8_t on1, uint8_t on2);
+uint16_t clc_speed_1(int16_t wheel_speed);
 unsigned short update_crc(unsigned short crc_accum, unsigned char *data_blk_ptr, unsigned short data_blk_size);
 uint8_t calculate_checksum_1_0(uint8_t *data, uint16_t length);
 dxl_sync_write_1_0 creat_sync_packet_1_0(void);
@@ -237,7 +249,7 @@ dxl_sync_write_2_0 creat_sync_packet_2_0(void);
 dxl_bulk_read_1_0 creat_bulk_packet_1_0(void);
 dxl_bulk_read_2_0 creat_bulk_packet_2_0(void);
 uint16_t serialize_sync_write_2_0(dxl_sync_write_2_0 *packet, uint8_t *id_array, uint8_t id_count, uint32_t *data_array, uint8_t *buffer, uint16_t buffer_size);
-void sync_write_1(uint8_t send_leg_type, uint16_t addr, uint16_t ankle_data, uint16_t wheel_data);
+void send_sync_write_1(uint8_t send_leg_type, uint16_t addr, uint16_t data_len, uint16_t *ankle_data, uint16_t *wheel_data);
 void send_sync_write_2(uint8_t send_leg_type, uint16_t addr, uint16_t data_len, uint32_t *hip_data, uint32_t *knee_data);
 
 #endif /* INC_DXL_2_0_H_ */
