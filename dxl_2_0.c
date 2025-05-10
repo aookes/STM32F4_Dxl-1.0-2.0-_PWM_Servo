@@ -198,23 +198,23 @@ void uart_transmit_packet(UART_HandleTypeDef *huart, uint8_t *data, uint16_t siz
 
 void dxl_torque_set(uint8_t send_leg_type, uint8_t on1, uint8_t on2)
 {
-	uint32_t on_1[1];
+	uint16_t on_1[1];
 	uint32_t on_2[1];
 	on_1[0] = on1;
 	on_2[0] = on2;
 
 	if(send_leg_type == 0)
 	{
-		send_sync_write_2(send_leg_type, DXL_2_Torque_Enable, 1, on_1, on_2);
+		send_sync_write_2(send_leg_type, DXL_2_Torque_Enable, 1, on_2, on_2);
 		HAL_Delay(1000);
-		send_sync_write_1(send_leg_type, DXL_1_Torque_Enable, 1, on_1, on_2);
+		send_sync_write_1(send_leg_type, DXL_1_Torque_Enable, 1, on_1, on_1);
 		HAL_Delay(1000);
 	}
 	else if(send_leg_type >= 1 && send_leg_type <= 4)
 	{
-		send_sync_write_2(send_leg_type, DXL_2_Torque_Enable, 1, on_1, on_2);
+		send_sync_write_2(send_leg_type, DXL_2_Torque_Enable, 1, on_2, on_2);
 		HAL_Delay(1000);
-		send_sync_write_1(send_leg_type, DXL_1_Torque_Enable, 1, on_1, on_2);
+		send_sync_write_1(send_leg_type, DXL_1_Torque_Enable, 1, on_1, on_1);
 		HAL_Delay(1000);
 	}
 }

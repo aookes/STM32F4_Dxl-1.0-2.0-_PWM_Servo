@@ -1,8 +1,8 @@
 /* USER CODE BEGIN Header */
 /**
  ******************************************************************************
- * @file           : main.c
- * @brief          : Main program body
+ * @file : main.c
+ * @brief : Main program body
  ******************************************************************************
  * @attention
  *
@@ -43,18 +43,19 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define DMA_BUF_SIZE     8     // DMA 버퍼 크기 (필요에 따라 조정 가능)
+#define DMA_BUF_SIZE 8         // DMA 버퍼 크기 (필요에 따라 조정 가능)
 
 /* UART 핸들 */
-extern UART_HandleTypeDef huart1;       // UART1 핸들
+extern UART_HandleTypeDef huart1; // UART1 핸들
 void process_input(void);
 void uart_rx_dma1_handler(void);
 void UART_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size);
+
 /* 수신 버퍼 및 플래그 */
 uint8_t tx_dma_buf[DMA_BUF_SIZE];
-uint8_t pc_rx_buf[DMA_BUF_SIZE]; // UART 수신 DMA 버퍼
-volatile uint8_t input_char;     // 입력 문자 저장 변수
-volatile uint8_t pc_new_data_received; // 새 데이터 수신 플래그
+uint8_t pc_rx_buf[DMA_BUF_SIZE];        // UART 수신 DMA 버퍼
+volatile uint8_t input_char;             // 입력 문자 저장 변수
+volatile uint8_t pc_new_data_received;   // 새 데이터 수신 플래그
 bool torque_status = false;
 /* USER CODE END PM */
 
@@ -65,22 +66,22 @@ uint32_t sit_angle[5][3] = {
 		{0,0,0},{518, 2850, 340},{2533, -495, 752},{2577, 71, 752}, {2041, 3150, 370}
 };
 uint32_t stand_angle[5][3] = {
-		{0, 0, 0},{825, 1665, 512}, {2246, 690, 512}, {2290, 1256, 512},  {2328, 1965, 590}
+		{0, 0, 0},{825, 1665, 512}, {2246, 690, 512}, {2290, 1256, 512}, {2328, 1965, 590}
 };
 uint32_t sit_ride[5][3] = {
-		{0, 0, 0},{223, 2899, 345}, {2843, -500, 630}, {2854, 131, 630},  {1761, 3168, 345}
+		{0, 0, 0},{223, 2899, 345}, {2843, -500, 630}, {2854, 131, 630}, {1761, 3168, 345}
 };
 uint32_t angle_speed[4] = {40, 40, 40, 40};
 uint32_t angle_speed_Hip[4] = {20, 20, 20, 20};
 uint16_t torque_limit[4] = {1023, 1023, 1023, 1023};
 uint16_t angle_speed_1[4] = {0xfefe, 0xfefe, 0xfefe, 0xfefe};
 int wheel_data[4] = {0,0,0,0};
-uint8_t stop_count = 0;
 uint16_t ss1[1], ss2[1], ss3[1], ss4[1];
+char before_input = 0;
 
 data_set_all data_set;
-bool uart_tx_busy = false; // 각 UART 포트별 상태
-//bool uart_tx_busy = 0;
+bool uart_tx_busy = false;
+
 
 /* USER CODE END PV */
 
@@ -92,6 +93,8 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+
 
 
 
@@ -220,6 +223,11 @@ void process_input() {
 	if (pc_new_data_received) {
 		switch(input_char) {
 		case 'x':{
+			align_Wheels();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
 			UART_Transmit_DMA(&huart1, (uint8_t*)"Go backward\r\n", 13);
 
 			for(int j = 0; j<10; j++){
@@ -241,6 +249,11 @@ void process_input() {
 		} break;
 
 		case 'w':{
+			align_Wheels();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
 			UART_Transmit_DMA(&huart1, (uint8_t*)"Go Straight\r\n", 13);
 			for(int j = 0; j<10; j++){
 
@@ -262,6 +275,11 @@ void process_input() {
 
 
 		case 'q':{
+			turn_left();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
 			UART_Transmit_DMA(&huart1, (uint8_t*)"Go Left\r\n", 9);
 			for(int j = 0; j<10; j++){
 
@@ -282,6 +300,11 @@ void process_input() {
 		} break;
 
 		case 'e':{
+			turn_right();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
 			UART_Transmit_DMA(&huart1, (uint8_t*)"Go Right\r\n", 10);
 			for(int j = 0; j<10; j++){
 
@@ -301,8 +324,64 @@ void process_input() {
 			}
 		} break;
 
+		case 'd':{
+			zero_turn();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
+			UART_Transmit_DMA(&huart1, (uint8_t*)"Turn Right\r\n", 12);
+			for(int j = 0; j<10; j++){
+
+				ss1[0] -= 20;
+				ss2[0] += 20;
+				ss3[0] += 20;
+				ss4[0] -= 20;
+
+				send_sync_write_1(FR_WHEEL, DXL_1_MOVING_SPEED, 2, ss1, ss1);
+				HAL_Delay(20);
+				send_sync_write_1(FL_WHEEL, DXL_1_MOVING_SPEED, 2, ss2, ss2);
+				HAL_Delay(20);
+				send_sync_write_1(RR_WHEEL, DXL_1_MOVING_SPEED, 2, ss3, ss3);
+				HAL_Delay(20);
+				send_sync_write_1(RL_WHEEL, DXL_1_MOVING_SPEED, 2, ss4, ss4);
+				HAL_Delay(20);
+			}
+		} break;
+
+		case 'a':{
+			zero_turn();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
+			UART_Transmit_DMA(&huart1, (uint8_t*)"Turn Left\r\n", 11);
+			for(int j = 0; j<10; j++){
+
+				ss1[0] -= 20;
+				ss2[0] += 20;
+				ss3[0] += 20;
+				ss4[0] -= 20;
+
+				send_sync_write_1(FR_WHEEL, DXL_1_MOVING_SPEED, 2, ss1, ss1);
+				HAL_Delay(20);
+				send_sync_write_1(FL_WHEEL, DXL_1_MOVING_SPEED, 2, ss2, ss2);
+				HAL_Delay(20);
+				send_sync_write_1(RR_WHEEL, DXL_1_MOVING_SPEED, 2, ss3, ss3);
+				HAL_Delay(20);
+				send_sync_write_1(RL_WHEEL, DXL_1_MOVING_SPEED, 2, ss4, ss4);
+				HAL_Delay(20);
+			}
+		} break;
+
+
 
 		case 'z':{
+			turn_left();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
 			UART_Transmit_DMA(&huart1, (uint8_t*)"Back Left\r\n", 11);
 			for(int j = 0; j<10; j++){
 
@@ -323,6 +402,11 @@ void process_input() {
 		} break;
 
 		case 'c':{
+			turn_right();
+			ss1[0] = 0;
+			ss2[0] = 0;
+			ss3[0] = 0;
+			ss4[0] = 0;
 			UART_Transmit_DMA(&huart1, (uint8_t*)"Back Right\r\n", 12);
 			for(int j = 0; j<10; j++){
 
@@ -345,37 +429,19 @@ void process_input() {
 
 		case 's':{
 			UART_Transmit_DMA(&huart1, (uint8_t*)"Stop Move\r\n", 11);
-			stop_count++;
 			uint16_t tos1[1], tos2[1], tos3[1], tos4[1];
-			tos1[0] = ss1[0], tos2[0] = ss2[0], tos3[0] = ss3[0], tos4[0] = ss4[0];
-			if(stop_count > 3)
-			{	//급정거
-				tos1[0] = 0; tos2[0] = 0; tos3[0] = 0; tos4[0] = 0;
-				send_sync_write_1(FR_WHEEL, DXL_1_MOVING_SPEED, 2, tos1, tos1);
-				HAL_Delay(20);
-				send_sync_write_1(FL_WHEEL, DXL_1_MOVING_SPEED, 2, tos2, tos2);
-				HAL_Delay(20);
-				send_sync_write_1(RR_WHEEL, DXL_1_MOVING_SPEED, 2, tos3, tos3);
-				HAL_Delay(20);
-				send_sync_write_1(RL_WHEEL, DXL_1_MOVING_SPEED, 2, tos4, tos4);
-				HAL_Delay(20);
-				stop_count = 0;
-			}
-			else if(stop_count <= 3 && stop_count > 0){
-				for(int i = 1; i < 10; i++){
-					tos1[0] -= ss1[0]/100; tos2[0] -= ss2[0]/100; tos3[0] -= ss3[0]/100; tos4[0] -= ss4[0]/100;
-					send_sync_write_1(FR_WHEEL, DXL_1_MOVING_SPEED, 2, tos1, tos1);
-					HAL_Delay(20);
-					send_sync_write_1(FL_WHEEL, DXL_1_MOVING_SPEED, 2, tos2, tos2);
-					HAL_Delay(20);
-					send_sync_write_1(RR_WHEEL, DXL_1_MOVING_SPEED, 2, tos3, tos3);
-					HAL_Delay(20);
-					send_sync_write_1(RL_WHEEL, DXL_1_MOVING_SPEED, 2, tos4, tos4);
-					HAL_Delay(20);
-					HAL_Delay(500);
-				}
-				stop_count = 0;
-			}
+
+			tos1[0] = 0; tos2[0] = 0; tos3[0] = 0; tos4[0] = 0;
+			send_sync_write_1(FR_WHEEL, DXL_1_MOVING_SPEED, 2, tos1, tos1);
+			HAL_Delay(20);
+			send_sync_write_1(FL_WHEEL, DXL_1_MOVING_SPEED, 2, tos2, tos2);
+			HAL_Delay(20);
+			send_sync_write_1(RR_WHEEL, DXL_1_MOVING_SPEED, 2, tos3, tos3);
+			HAL_Delay(20);
+			send_sync_write_1(RL_WHEEL, DXL_1_MOVING_SPEED, 2, tos4, tos4);
+			HAL_Delay(20);
+
+
 
 		} break;
 
